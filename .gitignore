@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pt
+*.ckpt
+*.wav
+results/
+data/raw/
+data/processed/

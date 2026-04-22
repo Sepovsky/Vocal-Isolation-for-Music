@@ -1,0 +1,6 @@
+speechbrain
+torch
+torchaudio
+hyperpyyaml
+numpy
+tqdm

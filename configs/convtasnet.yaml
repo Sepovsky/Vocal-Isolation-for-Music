@@ -1,0 +1,112 @@
+seed: 1234
+__set_seed: !apply:speechbrain.utils.seed_everything [!ref <seed>]
+
+data_folder: ./data/processed
+experiment_name: convtasnet
+output_folder: !ref ./results/<experiment_name>/<seed>
+train_log: !ref <output_folder>/train_log.txt
+save_folder: !ref <output_folder>/save
+train_data: !ref <data_folder>/musdb_train.csv
+valid_data: !ref <data_folder>/musdb_valid.csv
+test_data: !ref <data_folder>/musdb_test.csv
+
+precision: fp32
+num_spks: 4
+sample_rate: 44100
+save_audio: false
+noprogressbar: false
+
+N_epochs: 10
+batch_size: 1
+lr: 0.00015
+clip_grad_norm: 5
+loss_upper_lim: 999999
+limit_training_signal_len: false
+training_signal_len: 32000000
+
+dynamic_mixing: false
+use_wavedrop: false
+use_speedperturb: true
+use_rand_shift: false
+threshold_byloss: true
+threshold: -30
+
+speed_changes: [95, 100, 105]
+speed_perturb: !new:speechbrain.augment.time_domain.SpeedPerturb
+    orig_freq: !ref <sample_rate>
+    speeds: !ref <speed_changes>
+
+drop_freq: !new:speechbrain.augment.time_domain.DropFreq
+    drop_freq_low: 0
+    drop_freq_high: 1
+    drop_freq_count_low: 1
+    drop_freq_count_high: 3
+    drop_freq_width: 0.05
+
+drop_chunk: !new:speechbrain.augment.time_domain.DropChunk
+    drop_length_low: 1000
+    drop_length_high: 2000
+    drop_count_low: 1
+    drop_count_high: 5
+
+N_encoder_out: 256
+kernel_size: 16
+kernel_stride: 8
+
+dataloader_opts:
+    batch_size: !ref <batch_size>
+    num_workers: 3
+
+Encoder: !new:speechbrain.lobes.models.dual_path.Encoder
+    kernel_size: !ref <kernel_size>
+    out_channels: !ref <N_encoder_out>
+
+MaskNet: !new:speechbrain.lobes.models.conv_tasnet.MaskNet
+    N: 256
+    B: 256
+    H: 512
+    P: 3
+    X: 6
+    R: 4
+    C: !ref <num_spks>
+    norm_type: gLN
+    causal: true
+    mask_nonlinear: relu
+
+Decoder: !new:speechbrain.lobes.models.dual_path.Decoder
+    in_channels: !ref <N_encoder_out>
+    out_channels: 1
+    kernel_size: !ref <kernel_size>
+    stride: !ref <kernel_stride>
+    bias: false
+
+optimizer: !name:torch.optim.Adam
+    lr: !ref <lr>
+    weight_decay: 0
+
+loss: !name:speechbrain.nnet.losses.get_si_snr_with_pitwrapper
+
+lr_scheduler: !new:speechbrain.nnet.schedulers.ReduceLROnPlateau
+    factor: 0.5
+    patience: 2
+    dont_halve_until_epoch: 85
+
+epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
+    limit: !ref <N_epochs>
+
+modules:
+    encoder: !ref <Encoder>
+    decoder: !ref <Decoder>
+    masknet: !ref <MaskNet>
+
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+    checkpoints_dir: !ref <save_folder>
+    recoverables:
+        encoder: !ref <Encoder>
+        decoder: !ref <Decoder>
+        masknet: !ref <MaskNet>
+        counter: !ref <epoch_counter>
+        lr_scheduler: !ref <lr_scheduler>
+
+train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger
+    save_file: !ref <train_log>
